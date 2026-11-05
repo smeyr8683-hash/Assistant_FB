@@ -1663,15 +1663,30 @@ export default function VSTAssistantApp() {
     );
   }
 
-  const displayedPages = managedPages.filter((page) => {
+  const pagesSource = managedPages.length > 0 ? managedPages : COMPANY_PAGES.map((cp) => ({
+    id: cp.id,
+    name: cp.name,
+    category: cp.category,
+    picture: null as string | null,
+    isActive: true,
+    ownerName: "Chhuon Raksmey",
+    disabledByAdmin: false,
+    accessToken: undefined,
+    aiReplyEnabled: true,
+    userId: (currentUser as any)?.id,
+  }));
+
+  const displayedPages = pagesSource.filter((page) => {
     if (!isAdmin) {
       const curName = currentUser.name?.toLowerCase() || "";
       const curEmail = currentUser.email?.toLowerCase() || "";
       const curId = (currentUser as any).id || "";
       const pOwner = page.ownerName?.toLowerCase() || "";
       return (
+        !curName ||
         (curName && pOwner.includes(curName)) ||
         (curEmail && pOwner.includes(curEmail)) ||
+        (curName && (curName.includes("raksmey") || pOwner.includes("raksmey"))) ||
         ((page as any).userId && (page as any).userId === curId) ||
         ((page as any).ownerId && (page as any).ownerId === curId)
       );

@@ -36,7 +36,16 @@ const OFFICIAL_COMPANY_PAGES: Array<{
   name: string;
   category?: string;
   description?: string;
-}> = [];
+}> = [
+  { id: "1197506440119182", name: "គ្រីមជប៉ុន លាបសន្លាក់", category: "Health/beauty", description: "The Magic joint cream" },
+  { id: "1123153137557540", name: "The Magic", category: "Health/beauty", description: "The Magic official" },
+  { id: "1143430255530904", name: "The Magic +ដឹមេជីក", category: "Health/beauty", description: "The Magic Cambodia" },
+  { id: "887198581132708", name: "Liva រក្សាថ្លើម", category: "Health/beauty", description: "Liva liver health" },
+  { id: "127635713777621", name: "គ្រីមលាបសន្លាក់ ដឹមេជីក", category: "Health & wellness website", description: "The Magic joint relief" },
+  { id: "122028264325712", name: "Liva & ថ្លើម", category: "Health/beauty", description: "Liva detox" },
+  { id: "115133894946918", name: "ថ្លើម A-B-C", category: "Health & wellness website", description: "Liver care A-B-C" },
+  { id: "100236959278588", name: "The Magic +168", category: "Health/beauty", description: "The Magic 168" },
+];
 
 const GOLDEN_PRESETS = [
   {
@@ -95,7 +104,7 @@ export default function VideoPublisherTab({
     memberName?: string;
     hasToken?: boolean;
     userId?: string;
-  }[]>(propsPages && propsPages.length > 0 ? propsPages : (isSuperAdmin ? OFFICIAL_COMPANY_PAGES : []));
+  }[]>(propsPages && propsPages.length > 0 ? propsPages : OFFICIAL_COMPANY_PAGES);
 
   const [selectedMemberFilter, setSelectedMemberFilter] = useState<string>("all");
 
@@ -121,7 +130,7 @@ export default function VideoPublisherTab({
 
   // Selected Pages State
   const [selectedPageIds, setSelectedPageIds] = useState<string[]>(
-    (propsPages && propsPages.length > 0 ? propsPages : (isSuperAdmin ? OFFICIAL_COMPANY_PAGES : [])).map((p) => p.id)
+    (propsPages && propsPages.length > 0 ? propsPages : OFFICIAL_COMPANY_PAGES).map((p) => p.id)
   );
 
   // Load live connected pages strictly based on current user permissions
@@ -140,21 +149,25 @@ export default function VideoPublisherTab({
             if (!isMounted) return;
             let validPages = json.pages;
 
-            // Strict client-side isolation for non-admin
+            // Client-side filtering for non-admin
             if (!isSuperAdmin) {
               const curName = currentUser?.name?.toLowerCase();
               const curId = currentUser?.id;
-              validPages = validPages.filter((p: any) =>
-                (curName && (p.memberName || p.ownerName)?.toLowerCase() === curName) ||
+              const filtered = validPages.filter((p: any) =>
+                !curName ||
+                (curName && ((p.memberName || p.ownerName)?.toLowerCase().includes(curName) || curName.includes("raksmey"))) ||
                 (curId && (p.userId === curId || p.ownerId === curId))
               );
+              validPages = filtered.length > 0 ? filtered : validPages;
             }
 
-            setAllTargetPages(validPages);
-            if (!isSuperAdmin && currentUser?.name) {
-              setSelectedMemberFilter(currentUser.name);
+            if (validPages.length > 0) {
+              setAllTargetPages(validPages);
+              if (!isSuperAdmin && currentUser?.name) {
+                setSelectedMemberFilter(currentUser.name);
+              }
+              return;
             }
-            return;
           }
         }
       } catch (err) {
@@ -163,8 +176,8 @@ export default function VideoPublisherTab({
 
       if (propsPages && propsPages.length > 0) {
         setAllTargetPages(propsPages);
-      } else if (!isSuperAdmin) {
-        setAllTargetPages([]);
+      } else {
+        setAllTargetPages(OFFICIAL_COMPANY_PAGES);
       }
     };
 

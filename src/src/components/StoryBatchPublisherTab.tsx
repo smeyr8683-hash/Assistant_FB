@@ -86,6 +86,17 @@ const STORY_FUNNEL_PRESETS = [
   },
 ];
 
+const OFFICIAL_COMPANY_PAGES: ConnectedPage[] = [
+  { id: "1197506440119182", name: "គ្រីមជប៉ុន លាបសន្លាក់", category: "Health/beauty", ownerName: "Chhuon Raksmey" },
+  { id: "1123153137557540", name: "The Magic", category: "Health/beauty", ownerName: "Chhuon Raksmey" },
+  { id: "1143430255530904", name: "The Magic +ដឹមេជីក", category: "Health/beauty", ownerName: "Chhuon Raksmey" },
+  { id: "887198581132708", name: "Liva រក្សាថ្លើម", category: "Health/beauty", ownerName: "Chhuon Raksmey" },
+  { id: "127635713777621", name: "គ្រីមលាបសន្លាក់ ដឹមេជីក", category: "Health & wellness website", ownerName: "Chhuon Raksmey" },
+  { id: "122028264325712", name: "Liva & ថ្លើម", category: "Health/beauty", ownerName: "Chhuon Raksmey" },
+  { id: "115133894946918", name: "ថ្លើម A-B-C", category: "Health & wellness website", ownerName: "Chhuon Raksmey" },
+  { id: "100236959278588", name: "The Magic +168", category: "Health/beauty", ownerName: "Chhuon Raksmey" },
+];
+
 export default function StoryBatchPublisherTab({
   lang,
   connectedPages = [],
@@ -99,9 +110,19 @@ export default function StoryBatchPublisherTab({
     currentUser?.name === "VST Super Admin";
 
   // 1. Pages state (Supports selecting multiple pages freely)
-  const [pagesList, setPagesList] = useState<ConnectedPage[]>(connectedPages);
+  const [pagesList, setPagesList] = useState<ConnectedPage[]>(
+    connectedPages && connectedPages.length > 0 ? connectedPages : OFFICIAL_COMPANY_PAGES
+  );
   const [selectedPageIds, setSelectedPageIds] = useState<string[]>([]);
   const [selectedMemberFilter, setSelectedMemberFilter] = useState<string>("all");
+
+  useEffect(() => {
+    if (connectedPages && connectedPages.length > 0) {
+      setPagesList(connectedPages);
+    } else {
+      setPagesList(OFFICIAL_COMPANY_PAGES);
+    }
+  }, [connectedPages]);
 
   const memberNames = Array.from(
     new Set(pagesList.map((p) => p.ownerName || (p as any).memberName).filter(Boolean))

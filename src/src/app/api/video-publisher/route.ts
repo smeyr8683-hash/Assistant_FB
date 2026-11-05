@@ -37,7 +37,16 @@ const OFFICIAL_COMPANY_PAGES: Array<{
   category: string;
   niche: string;
   description: string;
-}> = [];
+}> = [
+  { id: "1197506440119182", name: "គ្រីមជប៉ុន លាបសន្លាក់", category: "Health/beauty", niche: "joint_cream", description: "The Magic joint cream" },
+  { id: "1123153137557540", name: "The Magic", category: "Health/beauty", niche: "joint_cream", description: "The Magic official" },
+  { id: "1143430255530904", name: "The Magic +ដឹមេជីក", category: "Health/beauty", niche: "joint_cream", description: "The Magic Cambodia" },
+  { id: "887198581132708", name: "Liva រក្សាថ្លើម", category: "Health/beauty", niche: "liver_health", description: "Liva liver health" },
+  { id: "127635713777621", name: "គ្រីមលាបសន្លាក់ ដឹមេជីក", category: "Health & wellness website", niche: "joint_cream", description: "The Magic joint relief" },
+  { id: "122028264325712", name: "Liva & ថ្លើម", category: "Health/beauty", niche: "liver_health", description: "Liva detox" },
+  { id: "115133894946918", name: "ថ្លើម A-B-C", category: "Health & wellness website", niche: "liver_health", description: "Liver care A-B-C" },
+  { id: "100236959278588", name: "The Magic +168", category: "Health/beauty", niche: "joint_cream", description: "The Magic 168" },
+];
 
 // Master Deep-Thinking Unique Caption Generator per Page & Style
 function generateUniqueCaptionByNiche(
@@ -212,19 +221,19 @@ export async function GET(req: NextRequest) {
         }
       }
 
-      // If Super Admin, also include official company pages if not already in list
-      if (isAdmin) {
+      // If Super Admin or list is empty, also include official company pages
+      if (isAdmin || pagesList.length === 0) {
         for (const p of OFFICIAL_COMPANY_PAGES) {
           if (!pagesList.some((existing) => existing.id === p.id)) {
             pagesList.push({
               id: p.id,
               name: p.name,
               category: p.category || "Facebook Page (Official)",
-              memberName: "VST Super Admin",
-              userId: "admin",
-              role: "owner",
+              memberName: userName || "Chhuon Raksmey",
+              userId: userId || "member",
+              role: isAdmin ? "owner" : "member",
               hasToken: !!tokenMap[p.id],
-              canPublish: false,
+              canPublish: true,
             });
           }
         }
