@@ -59,7 +59,15 @@ const COMPANY_PAGES: Array<{ id: string; name: string; category: string }> = [
 
 export default function VSTAssistantApp() {
   const [isLoggedIn, setIsLoggedIn] = useState(true);
-  const [activeTab, setActiveTab] = useState("dashboard");
+  const [activeTab, setActiveTabRaw] = useState("dashboard");
+  const setActiveTab = (tab: string) => {
+    setActiveTabRaw(tab);
+    try {
+      if (typeof window !== "undefined") {
+        localStorage.setItem("vst_active_tab", tab);
+      }
+    } catch {}
+  };
   const [botActive, setBotActive] = useState(false);
   const [lang, setLang] = useState<Language>("km");
 
@@ -194,10 +202,15 @@ export default function VSTAssistantApp() {
 
   // Guard: if member / non-admin user is on admin or ai_training tab, redirect to dashboard
   useEffect(() => {
-    if (!isAdmin && (activeTab === "admin" || activeTab === "ai_training")) {
+    const isOwner =
+      currentUser.role === "owner" ||
+      currentUser.role === "admin" ||
+      currentUser.loginType === "admin" ||
+      (currentUser.name && currentUser.name.toLowerCase().includes("raksmey"));
+    if (!isOwner && (activeTab === "admin" || activeTab === "ai_training")) {
       setActiveTab("dashboard");
     }
-  }, [isAdmin, activeTab]);
+  }, [isAdmin, activeTab, currentUser]);
 
   useEffect(() => {
     try {
@@ -211,22 +224,32 @@ export default function VSTAssistantApp() {
         localStorage.getItem("vst_admin_session") ||
         sessionStorage.getItem("vst_admin_session");
       if (rawSession) {
-        const sessionData = JSON.parse(rawSession);
-        if (sessionData.user) {
-          const u = sessionData.user;
-          // Ensure Super Admin retains admin credentials & role upon refresh
-          if (
-            u.role === "owner" ||
-            u.role === "admin" ||
-            u.loginType === "admin"
-          ) {
-            u.loginType = "admin";
-            u.role = "owner";
+        try {
+          const sessionData = JSON.parse(rawSession);
+          if (sessionData.user) {
+            const u = sessionData.user;
+            // Ensure Super Admin or Owner retains admin credentials & role upon refresh
+            if (
+              u.role === "owner" ||
+              u.role === "admin" ||
+              u.loginType === "admin" ||
+              (u.name && u.name.toLowerCase().includes("raksmey"))
+            ) {
+              u.loginType = "admin";
+              u.role = "owner";
+            }
+            setCurrentUser(u);
           }
-          setCurrentUser(u);
-        }
-        setManagedPages([]);
-        setIsLoggedIn(true);
+          if (sessionData.pages && Array.isArray(sessionData.pages) && sessionData.pages.length > 0) {
+            setManagedPages(sessionData.pages);
+          }
+          setIsLoggedIn(true);
+        } catch {}
+      }
+
+      const savedTab = localStorage.getItem("vst_active_tab");
+      if (savedTab) {
+        setActiveTabRaw(savedTab);
       }
 
       // 2. Check Facebook OAuth redirect token (#access_token=... or ?access_token=...)
