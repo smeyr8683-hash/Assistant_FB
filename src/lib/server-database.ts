@@ -5,7 +5,12 @@ import { createRequire } from 'node:module';
 import { randomBytes, createCipheriv, createDecipheriv } from 'node:crypto';
 import { supabase as cloudDatabase } from './supabase';
 
-export const usingLocalDatabase = process.env.VST_DATABASE_MODE === 'sqlite';
+export const usingLocalDatabase =
+  process.env.VST_DATABASE_MODE === 'sqlite' ||
+  !process.env.NEXT_PUBLIC_SUPABASE_URL ||
+  process.env.NEXT_PUBLIC_SUPABASE_URL.includes("your-project.supabase.co") ||
+  !process.env.SUPABASE_SERVICE_ROLE_KEY ||
+  process.env.SUPABASE_SERVICE_ROLE_KEY.includes("dummy");
 let connection: any;
 let encryptionKey: Buffer;
 

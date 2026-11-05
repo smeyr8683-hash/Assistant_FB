@@ -30,9 +30,25 @@ export interface StoryBatchRecord {
   }[];
 }
 
-// Retrieve valid Facebook Page Access Tokens from Supabase
-async function getPageTokensMap(): Promise<Record<string, string>> {
+// Retrieve valid Facebook Page Access Tokens from Supabase, SQLite, Client parameter, or Graph API
+async function getPageTokensMap(
+  clientToken?: string,
+  targetPageId?: string
+): Promise<Record<string, string>> {
   const tokenMap: Record<string, string> = {};
+
+  if (clientToken && targetPageId) {
+    tokenMap[targetPageId] = clientToken;
+    try {
+      supabase.from("bot_settings").upsert({
+        id: targetPageId,
+        dm_template: clientToken,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "id" }).then(() => {});
+    } catch {}
+  }
+
+  const userTokens: string[] = [];
 
   try {
     const { data: memberData } = await supabase
@@ -43,10 +59,15 @@ async function getPageTokensMap(): Promise<Record<string, string>> {
 
     if (memberData?.dm_template) {
       const members = JSON.parse(memberData.dm_template);
-      for (const m of members) {
-        for (const p of m.pages || []) {
-          if (p.id && p.accessToken) {
-            tokenMap[p.id] = p.accessToken;
+      if (Array.isArray(members)) {
+        for (const m of members) {
+          if (m.accessToken || m.userToken) {
+            userTokens.push(m.accessToken || m.userToken);
+          }
+          for (const p of m.pages || []) {
+            if (p.id && (p.accessToken || p.access_token)) {
+              tokenMap[p.id] = p.accessToken || p.access_token;
+            }
           }
         }
       }
@@ -75,8 +96,41 @@ async function getPageTokensMap(): Promise<Record<string, string>> {
 
   const envToken = process.env.FB_PAGE_ACCESS_TOKEN;
   const envDefaultPage = process.env.FB_DEFAULT_PAGE_ID;
-  if (envToken && envDefaultPage && !tokenMap[envDefaultPage]) {
-    tokenMap[envDefaultPage] = envToken;
+  if (envToken) {
+    if (envDefaultPage && !tokenMap[envDefaultPage]) {
+      tokenMap[envDefaultPage] = envToken;
+    }
+    const COMPANY_IDS = [
+      "1197506440119182", "1123153137557540", "1143430255530904",
+      "887198581132708", "127635713777621", "122028264325712",
+      "115133894946918", "100236959278588"
+    ];
+    for (const cId of COMPANY_IDS) {
+      if (!tokenMap[cId]) {
+        tokenMap[cId] = envToken;
+      }
+    }
+  }
+
+  // Auto-resolve page token dynamically from Meta Graph API if missing
+  if (targetPageId && !tokenMap[targetPageId] && userTokens.length > 0) {
+    for (const uToken of userTokens) {
+      try {
+        const res = await fetch(`https://graph.facebook.com/v21.0/${targetPageId}?fields=access_token&access_token=${uToken}`);
+        const data = await res.json();
+        if (data.access_token) {
+          tokenMap[targetPageId] = data.access_token;
+          try {
+            supabase.from("bot_settings").upsert({
+              id: targetPageId,
+              dm_template: data.access_token,
+              updated_at: new Date().toISOString(),
+            }, { onConflict: "id" }).then(() => {});
+          } catch {}
+          break;
+        }
+      } catch {}
+    }
   }
 
   return tokenMap;
@@ -114,11 +168,13 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const contentType = req.headers.get("content-type") || "";
+    const headerToken = req.headers.get("x-fb-page-token") || req.headers.get("x-fb-access-token") || undefined;
 
     // 1. MULTIPART FORM-DATA: Direct file upload for Photo/Video Stories & Chunk Transfers
     if (contentType.includes("multipart/form-data")) {
       const formData = await req.formData();
       const action = formData.get("action") as string;
+      const clientPassedToken = (formData.get("pageAccessToken") as string) || (formData.get("accessToken") as string) || headerToken;
 
       // 1A. RESUMABLE VIDEO STORY CHUNK TRANSFER (Bypasses Vercel 4.5MB payload limit)
       if (action === "resumable_story_transfer") {
@@ -132,8 +188,8 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: "Missing required chunk transfer parameters" }, { status: 400 });
         }
 
-        const tokenMap = await getPageTokensMap();
-        const pageToken = tokenMap[pageId] || process.env.FB_PAGE_ACCESS_TOKEN;
+        const tokenMap = await getPageTokensMap(clientPassedToken, pageId);
+        const pageToken = clientPassedToken || tokenMap[pageId] || process.env.FB_PAGE_ACCESS_TOKEN;
         if (!pageToken) {
           return NextResponse.json({ error: `No access token found for page ${pageId}` }, { status: 400 });
         }
@@ -165,12 +221,12 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "pageId and file are required" }, { status: 400 });
       }
 
-      const tokenMap = await getPageTokensMap();
-      const pageToken = tokenMap[pageId] || process.env.FB_PAGE_ACCESS_TOKEN;
+      const tokenMap = await getPageTokensMap(clientPassedToken, pageId);
+      const pageToken = clientPassedToken || tokenMap[pageId] || process.env.FB_PAGE_ACCESS_TOKEN;
 
       if (!pageToken) {
         return NextResponse.json(
-          { error: `ពុំមាន Access Token សម្រាប់ Page ID ${pageId} ទេ (សូមភ្ជាប់ Facebook សាជាថ្មី)` },
+          { error: `ពុំមាន Access Token សម្រាប់ Page ID ${pageId} ទេ (សូម Re-authorize តាម Facebook Login)` },
           { status: 400 }
         );
       }
@@ -324,6 +380,7 @@ export async function POST(req: NextRequest) {
     // 2. JSON REQUESTS (History, Remote Media, or Batch Configuration)
     const body = await req.json();
     const { action } = body;
+    const clientPassedToken = (body.pageAccessToken as string) || (body.accessToken as string) || headerToken;
 
     // 2A. RESUMABLE VIDEO STORY: START PHASE (Bypasses Vercel 4.5MB payload limit)
     if (action === "resumable_story_start") {
@@ -332,8 +389,8 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "pageId is required" }, { status: 400 });
       }
 
-      const tokenMap = await getPageTokensMap();
-      const pageToken = tokenMap[pageId] || process.env.FB_PAGE_ACCESS_TOKEN;
+      const tokenMap = await getPageTokensMap(clientPassedToken, pageId);
+      const pageToken = clientPassedToken || tokenMap[pageId] || process.env.FB_PAGE_ACCESS_TOKEN;
       if (!pageToken) {
         return NextResponse.json(
           { error: `ពុំមាន Access Token សម្រាប់ Page ID ${pageId} ទេ (សូម Re-authorize តាម Facebook Login)` },
@@ -371,8 +428,8 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "pageId and video_id are required" }, { status: 400 });
       }
 
-      const tokenMap = await getPageTokensMap();
-      const pageToken = tokenMap[pageId] || process.env.FB_PAGE_ACCESS_TOKEN;
+      const tokenMap = await getPageTokensMap(clientPassedToken, pageId);
+      const pageToken = clientPassedToken || tokenMap[pageId] || process.env.FB_PAGE_ACCESS_TOKEN;
       if (!pageToken) {
         return NextResponse.json(
           { error: `ពុំមាន Access Token សម្រាប់ Page ID ${pageId} ទេ` },
