@@ -11,9 +11,9 @@ let encryptionKey: Buffer;
 
 function db() {
   if (connection) return connection;
-  const directory = path.join(process.cwd(), '.local-data');
+  const directory = process.env.VERCEL ? path.join('/tmp', '.local-data') : path.join(process.cwd(), '.local-data');
   mkdirSync(directory, { recursive: true, mode: 0o700 });
-  chmodSync(directory, 0o700);
+  try { chmodSync(directory, 0o700); } catch {}
   const keyPath = path.join(directory, 'database.key');
   if (!existsSync(keyPath)) writeFileSync(keyPath, randomBytes(32), { mode: 0o600, flag: 'wx' });
   encryptionKey = readFileSync(keyPath);
@@ -21,7 +21,7 @@ function db() {
   const { DatabaseSync } = nativeRequire('node:sqlite');
   const file = path.join(directory, 'vst.sqlite');
   connection = new DatabaseSync(file);
-  chmodSync(file, 0o600);
+  try { chmodSync(file, 0o600); } catch {}
   connection.exec('PRAGMA busy_timeout=5000; CREATE TABLE IF NOT EXISTS records (collection TEXT NOT NULL, id TEXT NOT NULL, payload TEXT NOT NULL, PRIMARY KEY(collection,id));');
   return connection;
 }

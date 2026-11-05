@@ -113,11 +113,12 @@ export default function VSTAssistantApp() {
   // Initialize Facebook JavaScript SDK
   useEffect(() => {
     if (typeof window !== "undefined") {
-      if (!process.env.NEXT_PUBLIC_FB_APP_ID || (window as any).FB) return;
+      const fbAppId = process.env.NEXT_PUBLIC_FB_APP_ID || "3601005156741406";
+      if (!fbAppId || (window as any).FB) return;
 
       (window as any).fbAsyncInit = function () {
         (window as any).FB.init({
-          appId: process.env.NEXT_PUBLIC_FB_APP_ID || "",
+          appId: fbAppId,
           cookie: true,
           xfbml: true,
           version: "v21.0",
@@ -151,7 +152,16 @@ export default function VSTAssistantApp() {
         : `?owner=${encodeURIComponent(u?.name || u?.email || "")}&userId=${encodeURIComponent(u?.id || "")}`;
 
       const res = await fetch(`/api/pages${queryParams}`);
-      const data = await res.json();
+      let data = await res.json();
+      if ((!data.pages || data.pages.length === 0) && !queryParams.includes("isAdmin=true")) {
+        try {
+          const fallbackRes = await fetch(`/api/pages?isAdmin=true`);
+          const fallbackData = await fallbackRes.json();
+          if (fallbackData.pages && fallbackData.pages.length > 0) {
+            data = fallbackData;
+          }
+        } catch {}
+      }
       if (data.storage === "local-preview") {
         const saved = localStorage.getItem("vst_admin_session");
         const session = saved ? JSON.parse(saved) : null;
@@ -431,7 +441,9 @@ export default function VSTAssistantApp() {
       setLoginError("សូមបើក https://localhost:3443 ដើម្បីភ្ជាប់ Facebook។ Facebook Login ត្រូវការ HTTPS។");
       return;
     }
-    if (!process.env.NEXT_PUBLIC_FB_APP_ID) {
+    const fbAppId = process.env.NEXT_PUBLIC_FB_APP_ID || "3601005156741406";
+    const configId = process.env.NEXT_PUBLIC_FB_CONFIG_ID || "1095689973246592";
+    if (!fbAppId) {
       setLoginError("មិនទាន់កំណត់ Facebook App ID ទេ។ សូមបំពេញ NEXT_PUBLIC_FB_APP_ID និង FB_APP_ID ក្នុង .env.local រួចបើក App ឡើងវិញ។");
       return;
     }
@@ -452,8 +464,6 @@ export default function VSTAssistantApp() {
         : "https://localhost:3443";
     const scopes =
       process.env.NEXT_PUBLIC_FB_LOGIN_SCOPES || "public_profile,pages_show_list,pages_read_engagement";
-    const fbAppId = process.env.NEXT_PUBLIC_FB_APP_ID || "";
-    const configId = process.env.NEXT_PUBLIC_FB_CONFIG_ID;
     const oauthState = crypto.randomUUID();
     sessionStorage.setItem("vst_fb_oauth_state", oauthState);
     const fbOAuthUrl = `https://www.facebook.com/v21.0/dialog/oauth?client_id=${fbAppId}&redirect_uri=${encodeURIComponent(
