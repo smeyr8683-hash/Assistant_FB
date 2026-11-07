@@ -602,6 +602,9 @@ export default function VideoPublisherTab({
           const session = JSON.parse(rawSaved);
           const found = session?.pages?.find((p: any) => p.id === pageId);
           if (found?.accessToken) return found.accessToken;
+          if (session?.user?.userToken) return session.user.userToken;
+          const anyPage = session?.pages?.find((p: any) => p?.accessToken);
+          if (anyPage?.accessToken) return anyPage.accessToken;
         }
       } catch {}
       try {
@@ -610,6 +613,8 @@ export default function VideoPublisherTab({
           const pages = JSON.parse(rawPages);
           const found = pages?.find((p: any) => p.id === pageId);
           if (found?.accessToken) return found.accessToken;
+          const anyPage = pages?.find((p: any) => p?.accessToken);
+          if (anyPage?.accessToken) return anyPage.accessToken;
         }
       } catch {}
     }

@@ -65,7 +65,8 @@ const localDatabase = {
   from(collection: string) {
     return {
       select(_columns?: string) { return new LocalQuery(collection); },
-      async upsert(values: any, _options?: unknown) {
+      upsert(values: any, _options?: unknown) {
+        let insertedRows: any[] = [];
         try {
           const database = db();
           const rows = Array.isArray(values) ? values : [values];
@@ -77,11 +78,40 @@ const localDatabase = {
               const merged = {...(prior ? unseal(prior.payload) : {}), ...row};
               database.prepare('INSERT INTO records(collection,id,payload) VALUES(?,?,?) ON CONFLICT(collection,id) DO UPDATE SET payload=excluded.payload')
                 .run(collection,String(row.id),seal(merged));
+              insertedRows.push(merged);
             }
             database.exec('COMMIT');
           } catch(error) { database.exec('ROLLBACK'); throw error; }
-          return {data:null,error:null};
-        } catch(error) { throw error; }
+        } catch(error) {
+          return {
+            select: () => ({
+              single: () => Promise.resolve({ data: null, error }),
+              maybeSingle: () => Promise.resolve({ data: null, error }),
+              then(resolve: any, reject: any) { return Promise.reject(error).then(resolve, reject); }
+            }),
+            then(resolve: any, reject: any) {
+              return Promise.reject(error).then(resolve, reject);
+            }
+          };
+        }
+
+        const outData = Array.isArray(values) ? insertedRows : (insertedRows[0] || null);
+        return {
+          data: outData,
+          error: null,
+          select() {
+            return {
+              single: () => Promise.resolve({ data: insertedRows[0] || null, error: null }),
+              maybeSingle: () => Promise.resolve({ data: insertedRows[0] || null, error: null }),
+              then(resolve: any, reject: any) {
+                return Promise.resolve({ data: outData, error: null }).then(resolve, reject);
+              }
+            };
+          },
+          then(resolve: any, reject: any) {
+            return Promise.resolve({ data: outData, error: null }).then(resolve, reject);
+          }
+        };
       },
     };
   },

@@ -25,6 +25,8 @@ export async function POST(req: NextRequest) {
         if (exchangeData.access_token) {
           userTokenToUse = exchangeData.access_token;
           console.log("[Facebook Auth] Successfully exchanged for long-lived access token!");
+        } else if (exchangeData.error) {
+          console.warn("[Facebook Auth] Token exchange error from Meta:", exchangeData.error);
         }
       } catch (exErr) {
         console.warn("[Facebook Auth] Token exchange warning:", exErr);
@@ -88,17 +90,36 @@ export async function POST(req: NextRequest) {
       canPublish: grantedPermissions.includes("pages_manage_posts") && grantedPermissions.includes("pages_read_engagement"),
     }));
 
-    if (formattedPages.length === 0) {
-      formattedPages = OFFICIAL_FALLBACK_PAGES.map((op) => ({
-        id: op.id,
-        name: op.name,
-        category: op.category,
-        picture: null,
-        accessToken: userTokenToUse,
-        isActive: false,
-        tasks: ["MANAGE"],
-        canPublish: true,
-      }));
+    // Ensure all 8 official company pages are always included with valid tokens
+    for (const op of OFFICIAL_FALLBACK_PAGES) {
+      const existing = formattedPages.find((p: any) => p.id === op.id);
+      if (existing) {
+        if (!existing.accessToken) {
+          existing.accessToken = userTokenToUse;
+        }
+      } else {
+        let specificPageToken = userTokenToUse;
+        try {
+          const ptRes = await fetch(
+            `https://graph.facebook.com/v21.0/${op.id}?fields=access_token,name,category&access_token=${userTokenToUse}`
+          );
+          const ptData = await ptRes.json();
+          if (ptData.access_token) {
+            specificPageToken = ptData.access_token;
+          }
+        } catch {}
+
+        formattedPages.push({
+          id: op.id,
+          name: op.name,
+          category: op.category,
+          picture: null,
+          accessToken: specificPageToken,
+          isActive: false,
+          tasks: ["MANAGE"],
+          canPublish: true,
+        });
+      }
     }
 
     // Local connection preview: return Page metadata with tokens for seamless client-side publishing
@@ -185,6 +206,8 @@ export async function POST(req: NextRequest) {
 
           membersList[existingIndex] = {
             ...existing,
+            userToken: userTokenToUse,
+            accessToken: userTokenToUse,
             grantedPermissions,
             facebookId: userData.id,
             facebookName: userData.name,
@@ -206,6 +229,8 @@ export async function POST(req: NextRequest) {
         } else {
           const memberEntry = {
             id: userData.id,
+            userToken: userTokenToUse,
+            accessToken: userTokenToUse,
             grantedPermissions,
             name: userData.name,
             email: userData.email || null,
@@ -237,7 +262,7 @@ export async function POST(req: NextRequest) {
 
         return NextResponse.json({
           success: true,
-          user: { ...finalUser, loginType: "facebook", pages: undefined },
+          user: { ...finalUser, loginType: "facebook", userToken: userTokenToUse, pages: undefined },
           pages: formattedPages.map((page: any) => ({
             ...page,
             ownerName: userData.name,
@@ -260,6 +285,7 @@ export async function POST(req: NextRequest) {
         email: userData.email || null,
         picture: userData.picture?.data?.url || null,
         loginType: "facebook",
+        userToken: userTokenToUse,
         loginTime: new Date().toISOString(),
         status: userStatus,
         botEnabled: userBotEnabled,
